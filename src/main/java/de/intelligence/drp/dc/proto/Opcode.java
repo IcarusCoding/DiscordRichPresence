@@ -1,8 +1,11 @@
 package de.intelligence.drp.dc.proto;
 
+import java.util.Arrays;
+
 public enum Opcode {
 
-    HANDSHAKE(0);
+    HANDSHAKE(0),
+    FRAME(1);
 
     private final int opcode;
 
@@ -12,6 +15,10 @@ public enum Opcode {
 
     public int getOpcode() {
         return this.opcode;
+    }
+
+    public static Opcode fromCode(int code) {
+        return Arrays.stream(Opcode.values()).filter(o -> o.opcode == code).findFirst().orElse(null);
     }
 
 }

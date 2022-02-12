@@ -8,10 +8,6 @@ import com.sun.jna.platform.win32.WinNT.HANDLE;
 
 public interface Kernel32 extends StdCallLibrary {
 
-    int GENERIC_READ = 0x80000000;
-    int GENERIC_WRITE = 0x40000000;
-    int OPEN_EXISTING = 0x03;
-
     Kernel32 INSTANCE = Native.load("kernel32", Kernel32.class);
 
     HANDLE CreateFileA(String lpFileName, int dwDesiredAccess, int dwShareMode, WinBase.SECURITY_ATTRIBUTES lpSecurityAttributes, int dwCreationDisposition, int dwFlagsAndAttributes, HANDLE hTemplateFile);

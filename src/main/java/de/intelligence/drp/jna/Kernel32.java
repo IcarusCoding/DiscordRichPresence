@@ -2,9 +2,9 @@ package de.intelligence.drp.jna;
 
 import com.sun.jna.Native;
 import com.sun.jna.platform.win32.WinBase;
+import com.sun.jna.platform.win32.WinNT.HANDLE;
 import com.sun.jna.ptr.IntByReference;
 import com.sun.jna.win32.StdCallLibrary;
-import com.sun.jna.platform.win32.WinNT.HANDLE;
 
 public interface Kernel32 extends StdCallLibrary {
 
@@ -18,8 +18,10 @@ public interface Kernel32 extends StdCallLibrary {
 
     boolean CloseHandle(HANDLE hObject);
 
-    boolean PeekNamedPipe(HANDLE hNamedPipe, byte[] lpBuffer, int nBufferSize, IntByReference lpBytesRead,IntByReference lpTotalBytesAvail, IntByReference lpBytesLeftThisMessage);
+    boolean PeekNamedPipe(HANDLE hNamedPipe, byte[] lpBuffer, int nBufferSize, IntByReference lpBytesRead, IntByReference lpTotalBytesAvail, IntByReference lpBytesLeftThisMessage);
 
     int GetLastError();
+
+    int GetCurrentProcessId();
 
 }

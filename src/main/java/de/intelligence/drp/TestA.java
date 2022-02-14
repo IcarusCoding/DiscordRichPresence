@@ -3,9 +3,8 @@ package de.intelligence.drp;
 import de.intelligence.drp.connection.IRPCEventHandler;
 import de.intelligence.drp.dc.DiscordWrapper;
 import de.intelligence.drp.dc.json.Message;
-import de.intelligence.drp.dc.proto.Event;
 
-public final class Test {
+public final class TestA {
 
     public static void main(String[] args) throws InterruptedException {
        /* final IIPCConnection conn = new IPCConnectionImpl();
@@ -13,7 +12,7 @@ public final class Test {
         final IRPCConnection rpcConn = new DiscordRPCConnection(new ConnectionInfo(1, "918252911631400970"), conn);
         rpcConn.connect(); */
 
-        final DiscordWrapper wrapper = new DiscordWrapper("918252911631400970");
+        final DiscordWrapper wrapper = new DiscordWrapper("880476247946330182");
         wrapper.addEventHandler(new IRPCEventHandler<Message>() {
             @Override
             public void onConnect(Message message) {
@@ -27,7 +26,7 @@ public final class Test {
         });
         new Thread(wrapper::initialize).start();
         Thread.sleep(1000);
-        wrapper.subscribe(Event.ACTIVITY_JOIN);
+        wrapper.updateRichPresence();
         Thread.sleep(Integer.MAX_VALUE);
     }
 

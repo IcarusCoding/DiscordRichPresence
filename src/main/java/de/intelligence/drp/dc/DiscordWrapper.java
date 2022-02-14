@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Queue;
+import java.util.UUID;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -37,6 +38,7 @@ import de.intelligence.drp.dc.proto.Command;
 import de.intelligence.drp.dc.proto.Event;
 import de.intelligence.drp.dc.proto.Frame;
 import de.intelligence.drp.dc.proto.Opcode;
+import de.intelligence.drp.jna.Kernel32;
 
 import static de.intelligence.drp.dc.connection.DiscordRPCConnection.FRAME_LENGTH;
 
@@ -45,6 +47,7 @@ public final class DiscordWrapper implements DiscordRichPresence, Initializable,
     private static final int MAX_ACTIVITY_WAIT = 1000;
 
     private final String applicationId;
+    private final int pid;
     private final ReentrantLock reentrantLock;
     private final Condition activityCondition;
     private final IRPCConnection<Message> rpcConnection;
@@ -61,6 +64,7 @@ public final class DiscordWrapper implements DiscordRichPresence, Initializable,
 
     public DiscordWrapper(String applicationId) {
         this.applicationId = applicationId;
+        this.pid = Kernel32.INSTANCE.GetCurrentProcessId();
         this.reentrantLock = new ReentrantLock();
         this.activityCondition = this.reentrantLock.newCondition();
         final IIPCConnection conn = new IPCConnectionImpl();
@@ -135,6 +139,57 @@ public final class DiscordWrapper implements DiscordRichPresence, Initializable,
         }
     }
 
+    public void updateRichPresence() {
+        final ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        JsonWriter writer = new JsonWriter(new OutputStreamWriter(baos));
+        try (baos) {
+            writer.beginObject();
+            writer.name("cmd").value("SET_ACTIVITY");
+            writer.name("nonce").value(Integer.toString(this.nonce++));
+            writer.name("args");
+            writer.beginObject();
+            writer.name("pid").value(this.pid);
+            writer.name("activity");
+            writer.beginObject();
+            writer.name("state").value("Nico ist dumm");
+            writer.name("details").value("Ratten");
+            writer.name("timestamps");
+            writer.beginObject();
+            writer.name("start").value(System.currentTimeMillis());
+            writer.name("end").value(System.currentTimeMillis() + (1000 * 100));
+            writer.endObject();
+            writer.name("party");
+            writer.beginObject();
+            writer.name("id").value(UUID.randomUUID().toString());
+            writer.name("size");
+            writer.beginArray();
+            writer.value(2);
+            writer.value(200);
+            writer.endArray();
+            writer.endObject();
+            writer.name("secrets");
+            writer.beginObject();
+            writer.name("match").value(UUID.randomUUID().toString());
+            writer.name("join").value(UUID.randomUUID().toString());
+            writer.name("spectate").value(UUID.randomUUID().toString());
+            writer.endObject();
+            writer.name("assets");
+            writer.beginObject();
+            writer.name("large_image").value("dominion");
+            writer.endObject();
+            writer.endObject();
+            writer.endObject();
+            writer.endObject();
+            writer.flush();
+        } catch (IOException ex) {
+            ex.printStackTrace();
+        }
+        final String json = baos.toString(StandardCharsets.UTF_8);
+        System.out.println(json);
+        final Frame f = this.createFrame(json);
+        this.rpcConnection.send(f.toByteArray(), f.getFullLength());
+    }
+
     @Override
     public void subscribe(Event event) {
         final String json = createJson(Command.SUBSCRIBE, event, this.nonce++);
@@ -150,7 +205,7 @@ public final class DiscordWrapper implements DiscordRichPresence, Initializable,
         this.queueOut.add(unsubscribeFrame);
     }
 
-    private static String createJson(Command command, Event event, int nonce) {
+    private static String createJson(Command command, Event event, int nonce) { // TODO let event serialize themselves
         final ByteArrayOutputStream baos = new ByteArrayOutputStream();
         JsonWriter writer = new JsonWriter(new OutputStreamWriter(baos));
         try (baos) {

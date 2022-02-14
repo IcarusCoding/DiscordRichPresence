@@ -6,6 +6,7 @@ public enum Command {
     INVALID,
     DISPATCH,
     SUBSCRIBE,
-    UNSUBSCRIBE
+    UNSUBSCRIBE,
+    SET_ACTIVITY
 
 }

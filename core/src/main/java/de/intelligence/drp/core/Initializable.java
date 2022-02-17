@@ -1,4 +1,4 @@
-package de.intelligence.drp.api;
+package de.intelligence.drp.core;
 
 public interface Initializable {
 

@@ -2,6 +2,7 @@ package de.intelligence.drp.core.dc;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.Objects;
 import java.util.Queue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -20,11 +21,11 @@ import org.json.JSONObject;
 
 import de.intelligence.drp.api.IDiscord;
 import de.intelligence.drp.api.RichPresence;
+import de.intelligence.drp.api.Updatable;
 import de.intelligence.drp.api.event.CloseEvent;
 import de.intelligence.drp.api.event.DiscordEvent;
 import de.intelligence.drp.api.event.ReadyEvent;
 import de.intelligence.drp.api.user.IDiscordUser;
-import de.intelligence.drp.api.Initializable;
 import de.intelligence.drp.core.connection.IIPCConnection;
 import de.intelligence.drp.core.connection.IPCConnectionImpl;
 import de.intelligence.drp.core.connection.IRPCConnection;
@@ -54,6 +55,7 @@ final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message> {
     private final Condition condition;
     private final Queue<Frame> queueOut;
 
+    private RichPresence currentPresence;
     private boolean initialized;
     private boolean abort;
     private IDiscordUser connectedDiscordUser;
@@ -92,6 +94,14 @@ final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message> {
 
     @Override
     public void setRichPresence(RichPresence presence) {
+        Objects.requireNonNull(presence);
+        if (this.currentPresence != null && !this.currentPresence.equals(presence)) {
+            this.currentPresence.removeObserver(this);
+        }
+        if (!presence.equals(this.currentPresence)) {
+            this.currentPresence = presence;
+            this.currentPresence.addObserver(this);
+        }
         final JSONObject rootJson = new JSONObject()
                 .put("cmd", Command.SET_ACTIVITY.name())
                 .put("nonce", Integer.toString(this.nonce++))
@@ -104,12 +114,7 @@ final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message> {
     }
 
     @Override
-    public boolean isInitialized() {
-        return this.initialized;
-    }
-
-    @Override
-    public void initialize() {
+    public void connect() {
         if (this.initialized) {
             return;
         }
@@ -126,6 +131,18 @@ final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message> {
             }
             this.update();
         }
+        this.rpcConnection.disconnect();
+        this.currentPresence = null;
+        this.queueOut.clear();
+        this.abort = false;
+        this.nonce = 0;
+        this.connectedDiscordUser = null;
+        this.initialized = false;
+    }
+
+    @Override
+    public void disconnect() {
+        this.abort = true;
     }
 
     private void update() {
@@ -175,8 +192,10 @@ final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message> {
     }
 
     @Override
-    public void close() {
-        this.abort = true;
+    public void notifyUpdate(Updatable source) {
+        if (this.currentPresence.equals(source)) {
+            this.setRichPresence((RichPresence) source);
+        }
     }
 
 }

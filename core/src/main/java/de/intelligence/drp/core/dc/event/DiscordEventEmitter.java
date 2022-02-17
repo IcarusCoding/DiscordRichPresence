@@ -16,6 +16,7 @@ import de.intelligence.drp.api.annotation.AutoSubscribe;
 import de.intelligence.drp.api.annotation.DiscordEventHandler;
 import de.intelligence.drp.api.annotation.EventMetadata;
 import de.intelligence.drp.api.event.DiscordEvent;
+import de.intelligence.drp.api.event.ErrorEvent;
 import de.intelligence.drp.core.event.IEventEmitter;
 import de.intelligence.drp.core.util.AnnotationUtils;
 import de.intelligence.drp.core.util.Pair;
@@ -35,7 +36,12 @@ public final class DiscordEventEmitter implements IEventEmitter<DiscordEvent> {
     @Override
     public void emit(DiscordEvent event) {
         Objects.requireNonNull(event);
-        this.emit0(event);
+        if (this.emit0(event)) {
+            return;
+        }
+        if (event.getClass().equals(ErrorEvent.class)) {
+            System.out.println("NO ERROR HANDLER FOUND RIP RIP RIP!!!");
+        }
     }
 
     @Override
@@ -89,9 +95,9 @@ public final class DiscordEventEmitter implements IEventEmitter<DiscordEvent> {
         }
     }
 
-    private void emit0(Object obj) {
+    private boolean emit0(Object obj) {
         if (!this.handlerMethods.containsKey(obj.getClass())) {
-            return;
+            return false;
         }
         final Queue<Pair<Object, List<EventListener>>> queue = this.threadLocalQueue.get();
         queue.offer(Pair.of(obj, this.handlerMethods.get(obj.getClass()).stream()
@@ -106,7 +112,6 @@ public final class DiscordEventEmitter implements IEventEmitter<DiscordEvent> {
                 try {
                     listener.method.invoke(listener.subObj, currentPair.get().getLeft());
                 } catch (ReflectiveOperationException ignored) {
-                    ignored.printStackTrace(); //TODO remove
                 }
                 if (!canAccess) {
                     listener.method.setAccessible(false);
@@ -114,6 +119,7 @@ public final class DiscordEventEmitter implements IEventEmitter<DiscordEvent> {
             });
             currentPair.set(queue.poll());
         }
+        return true;
     }
 
     private record EventListener(Object subObj, Method method, int priority) {

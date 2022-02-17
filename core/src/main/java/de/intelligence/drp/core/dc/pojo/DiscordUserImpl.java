@@ -66,7 +66,6 @@ public final class DiscordUserImpl implements IDiscordUser {
         return this.premiumType;
     }
 
-    //TODO remove
     @Override
     public String toString() {
         return "DiscordUserImpl{" +

@@ -1,17 +1,15 @@
 package de.intelligence.drp.core.exception;
 
-public final class AlreadyInitializedException extends RuntimeException {
+import de.intelligence.drp.api.exception.ErrorCode;
 
-    public AlreadyInitializedException() {
-        super();
+public final class AlreadyInitializedException extends ConnectionException {
+
+    public AlreadyInitializedException(String msg, Throwable throwable, ErrorCode errorCode) {
+        super(msg, throwable, errorCode);
     }
 
-    public AlreadyInitializedException(String message) {
-        super(message);
-    }
-
-    public AlreadyInitializedException(String message, Throwable cause) {
-        super(message, cause);
+    public AlreadyInitializedException(String msg, ErrorCode errorCode) {
+        super(msg, errorCode);
     }
 
 }

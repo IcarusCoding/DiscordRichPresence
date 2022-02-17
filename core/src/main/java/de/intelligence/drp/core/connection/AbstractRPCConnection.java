@@ -4,6 +4,10 @@ import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
 
+import de.intelligence.drp.core.exception.ConnectionException;
+import de.intelligence.drp.core.exception.ReadFailureException;
+import de.intelligence.drp.core.exception.WriteFailureException;
+
 public abstract non-sealed class AbstractRPCConnection<T> implements IRPCConnection<T> {
 
     protected final IIPCConnection ipcConnection;
@@ -18,17 +22,17 @@ public abstract non-sealed class AbstractRPCConnection<T> implements IRPCConnect
     }
 
     @Override
-    public abstract void connect();
+    public abstract void connect() throws ConnectionException;
 
     @Override
     public abstract void disconnect();
 
     @Override
-    public void send(byte[] payload, int payloadSize) {
+    public void send(byte[] payload, int payloadSize) throws WriteFailureException {
     }
 
     @Override
-    public byte[] receive(int size) {
+    public byte[] receive(int size) throws ReadFailureException {
         return new byte[0];
     }
 

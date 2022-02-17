@@ -1,17 +1,15 @@
 package de.intelligence.drp.core.exception;
 
-public final class ReadFailureException extends RuntimeException {
+import de.intelligence.drp.api.exception.ErrorCode;
 
-    public ReadFailureException() {
-        super();
+public final class ReadFailureException extends ConnectionException {
+
+    ReadFailureException(String msg, Throwable throwable, ErrorCode errorCode) {
+        super(msg, throwable, errorCode);
     }
 
-    public ReadFailureException(String message) {
-        super(message);
-    }
-
-    public ReadFailureException(String message, Throwable cause) {
-        super(message, cause);
+    public ReadFailureException(String msg, ErrorCode errorCode) {
+        super(msg, errorCode);
     }
 
 }

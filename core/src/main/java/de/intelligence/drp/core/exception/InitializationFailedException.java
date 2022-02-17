@@ -1,17 +1,15 @@
 package de.intelligence.drp.core.exception;
 
-public final class InitializationFailedException extends RuntimeException {
+import de.intelligence.drp.api.exception.ErrorCode;
 
-    public InitializationFailedException() {
-        super();
+public final class InitializationFailedException extends ConnectionException {
+
+    public InitializationFailedException(String msg, Throwable throwable, ErrorCode errorCode) {
+        super(msg, throwable, errorCode);
     }
 
-    public InitializationFailedException(String message) {
-        super(message);
-    }
-
-    public InitializationFailedException(String message, Throwable cause) {
-        super(message, cause);
+    public InitializationFailedException(String msg, ErrorCode errorCode) {
+        super(msg, errorCode);
     }
 
 }

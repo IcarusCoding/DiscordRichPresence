@@ -1,17 +1,15 @@
 package de.intelligence.drp.core.exception;
 
-public final class ConnectionFailureException extends RuntimeException {
+import de.intelligence.drp.api.exception.ErrorCode;
 
-    public ConnectionFailureException() {
-        super();
+public final class ConnectionFailureException extends ConnectionException {
+
+    ConnectionFailureException(String msg, Throwable throwable, ErrorCode errorCode) {
+        super(msg, throwable, errorCode);
     }
 
-    public ConnectionFailureException(String message) {
-        super(message);
-    }
-
-    public ConnectionFailureException(String message, Throwable cause) {
-        super(message, cause);
+    public ConnectionFailureException(String msg, ErrorCode errorCode) {
+        super(msg, errorCode);
     }
 
 }

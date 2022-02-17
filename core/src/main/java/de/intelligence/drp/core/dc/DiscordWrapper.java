@@ -7,6 +7,7 @@ import java.util.Objects;
 import java.util.Queue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
@@ -26,8 +27,10 @@ import de.intelligence.drp.api.Updatable;
 import de.intelligence.drp.api.event.ActivityJoinEvent;
 import de.intelligence.drp.api.event.CloseEvent;
 import de.intelligence.drp.api.event.DiscordEvent;
+import de.intelligence.drp.api.event.ErrorEvent;
 import de.intelligence.drp.api.event.EventType;
 import de.intelligence.drp.api.event.ReadyEvent;
+import de.intelligence.drp.api.exception.ErrorCode;
 import de.intelligence.drp.api.user.IDiscordUser;
 import de.intelligence.drp.core.connection.IIPCConnection;
 import de.intelligence.drp.core.connection.IPCConnectionImpl;
@@ -44,6 +47,11 @@ import de.intelligence.drp.core.dc.proto.Frame;
 import de.intelligence.drp.core.dc.proto.InternalEventType;
 import de.intelligence.drp.core.dc.proto.Opcode;
 import de.intelligence.drp.core.event.IEventEmitter;
+import de.intelligence.drp.core.exception.ConnectionException;
+import de.intelligence.drp.core.exception.ConnectionFailureException;
+import de.intelligence.drp.core.exception.InvalidMessageException;
+import de.intelligence.drp.core.exception.ReadFailureException;
+import de.intelligence.drp.core.exception.WriteFailureException;
 import de.intelligence.drp.core.os.OSUtils;
 
 //TODO add threading support
@@ -53,6 +61,7 @@ public final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message>
     private final IEventEmitter<DiscordEvent> eventEmitter;
     private final int pid;
     private final Gson gson;
+    private final AtomicReference<ConnectionException> lastException;
     private final IRPCConnection<Message> rpcConnection;
     private final Supplier<Boolean> retryFunc;
     private final ReentrantLock reentrantLock;
@@ -71,6 +80,7 @@ public final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message>
         this.eventEmitter = new DiscordEventEmitter(this);
         this.pid = OSUtils.getOsDependent().getCurrentPID();
         this.gson = new GsonBuilder().registerTypeAdapter(Message.class, new MessageDeserializer()).create();
+        this.lastException = new AtomicReference<>();
         final IIPCConnection ipcConn = new IPCConnectionImpl();
         ipcConn.setNamedPipes(Arrays.asList("\\\\.\\pipe\\discord-ipc-0", "\\\\.\\pipe\\discord-ipc-1", "\\\\.\\pipe\\discord-ipc-2"));
         this.rpcConnection = new DiscordRPCConnection(new ConnectionInfo(1, this.applicationId), this.gson, ipcConn);
@@ -79,7 +89,11 @@ public final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message>
                 .intervalFunction(IntervalFunction.ofExponentialBackoff(DiscordConsts.EXPONENTIAL_BACKOFF_INIT,
                         IntervalFunction.DEFAULT_MULTIPLIER))
                 .retryOnResult(a -> a).build()), () -> {
-            this.rpcConnection.connect();
+            try {
+                this.rpcConnection.connect();
+            } catch (ConnectionException ex) {
+                this.lastException.set(ex);
+            }
             return !this.rpcConnection.isConnected();
         });
         this.reentrantLock = new ReentrantLock();
@@ -125,16 +139,22 @@ public final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message>
         }
         this.rpcConnection.addEventHandler(this);
         this.initialized = true;
-        this.update();
-        while (!this.abort) {
-            this.reentrantLock.lock();
-            try {
-                this.condition.await(DiscordConsts.MAX_ACTIVITY_WAIT, TimeUnit.MILLISECONDS);
-            } catch (InterruptedException ex) {
-                ex.printStackTrace();
-                return;
-            }
+        try {
             this.update();
+            this.terminateIfError();
+            while (!this.abort) {
+                this.reentrantLock.lock();
+                try {
+                    this.condition.await(DiscordConsts.MAX_ACTIVITY_WAIT, TimeUnit.MILLISECONDS);
+                } catch (InterruptedException ex) {
+                    ex.printStackTrace();
+                    return;
+                }
+                this.update();
+            }
+        } catch (ReadFailureException | WriteFailureException | InvalidMessageException ex) {
+            this.lastException.set(ex);
+            this.terminateIfError();
         }
         this.rpcConnection.disconnect();
         this.rpcConnection.removeEventHandler(this);
@@ -143,6 +163,7 @@ public final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message>
         this.abort = false;
         this.nonce = 0;
         this.connectedDiscordUser = null;
+        this.lastException.set(null);
         this.initialized = false;
     }
 
@@ -181,7 +202,7 @@ public final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message>
         this.queueOut.add(DiscordWrapper.createFrame(DiscordWrapper.createSimpleJson(Command.UNSUBSCRIBE, type, this.nonce++)));
     }
 
-    private void update() {
+    private void update() throws ReadFailureException, WriteFailureException, InvalidMessageException {
         if (!this.rpcConnection.isConnected()) {
             this.retryFunc.get();
             return;
@@ -194,15 +215,28 @@ public final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message>
             final Message message = this.gson.fromJson(new String(readBuf), Message.class);
             if (message.hasNonce()) {
                 if (message.getEvent() == InternalEventType.ERROR) {
-                    System.out.println("ERROR");
+                    throw new InvalidMessageException(message.getData().get("message").getAsString(), ErrorCode.UNSPECIFIED);
                 }
-            } else if(message.getEvent() == InternalEventType.ACTIVITY_JOIN && message.getData().has("secret")) {
+            } else if (message.getEvent() == InternalEventType.ACTIVITY_JOIN && message.getData().has("secret")) {
                 this.eventEmitter.emit(new ActivityJoinEvent(this, message.getData().get("secret").getAsString()));
             }
         }
         while (!this.queueOut.isEmpty()) {
             final Frame frameOut = this.queueOut.poll();
             this.rpcConnection.send(frameOut.toByteArray(), frameOut.getFullLength());
+            try {
+                Thread.sleep(100); //TODO create own scheduler when threading is implemented
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private void terminateIfError() {
+        final ConnectionException lastEx = this.lastException.get();
+        if (lastEx != null) {
+            this.eventEmitter.emit(new ErrorEvent(lastEx, lastEx.getErrorCode()));
+            this.disconnect();
         }
     }
 

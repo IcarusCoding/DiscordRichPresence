@@ -3,6 +3,8 @@ package de.intelligence.drp.api;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 
+import de.intelligence.drp.api.exception.ImplementationNotFoundException;
+
 public final class Discord {
 
     private static final String IMPLEMENTATION = "de.intelligence.drp.core.dc.DiscordWrapper";

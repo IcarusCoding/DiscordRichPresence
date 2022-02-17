@@ -1,17 +1,15 @@
 package de.intelligence.drp.core.exception;
 
-public final class WriteFailureException extends RuntimeException {
+import de.intelligence.drp.api.exception.ErrorCode;
 
-    public WriteFailureException() {
-        super();
+public final class WriteFailureException extends ConnectionException {
+
+    WriteFailureException(String msg, Throwable throwable, ErrorCode errorCode) {
+        super(msg, throwable, errorCode);
     }
 
-    public WriteFailureException(String message) {
-        super(message);
-    }
-
-    public WriteFailureException(String message, Throwable cause) {
-        super(message, cause);
+    public WriteFailureException(String msg, ErrorCode errorCode) {
+        super(msg, errorCode);
     }
 
 }

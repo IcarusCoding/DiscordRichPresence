@@ -15,6 +15,9 @@ import de.intelligence.drp.core.dc.proto.Command;
 import de.intelligence.drp.core.dc.proto.InternalEventType;
 import de.intelligence.drp.core.dc.proto.Frame;
 import de.intelligence.drp.core.dc.proto.Opcode;
+import de.intelligence.drp.core.exception.ConnectionException;
+import de.intelligence.drp.core.exception.ReadFailureException;
+import de.intelligence.drp.core.exception.WriteFailureException;
 
 public final class DiscordRPCConnection extends AbstractRPCConnection<Message> {
 
@@ -28,7 +31,7 @@ public final class DiscordRPCConnection extends AbstractRPCConnection<Message> {
     }
 
     @Override
-    public void connect() {
+    public void connect() throws ConnectionException {
         if (super.state == RPCConnectionState.CONNECT) {
             return;
         }
@@ -55,14 +58,13 @@ public final class DiscordRPCConnection extends AbstractRPCConnection<Message> {
         this.state = RPCConnectionState.DISCONNECT;
     }
 
-    //TODO generic param
     @Override
-    public void send(byte[] payload, int payloadSize) {
+    public void send(byte[] payload, int payloadSize) throws WriteFailureException {
         super.ipcConnection.send(payload, payloadSize);
     }
 
     @Override
-    public byte[] receive(int size) { //TODO maybe return generic param
+    public byte[] receive(int size) throws ReadFailureException {
         Frame constructedFrame = null;
         while (true) {
             byte[] headerBuf = super.ipcConnection.receive(8);
@@ -91,7 +93,7 @@ public final class DiscordRPCConnection extends AbstractRPCConnection<Message> {
         return this.gson;
     }
 
-    private void doHandshake() {
+    private void doHandshake() throws WriteFailureException {
         final byte[] payloadBuf = new byte[DiscordConsts.FRAME_LENGTH - 8]; // subtract header
         final byte[] source = this.gson.toJson(this.info).getBytes(StandardCharsets.UTF_8);
         System.arraycopy(source, 0, payloadBuf, 0, source.length);
@@ -99,7 +101,7 @@ public final class DiscordRPCConnection extends AbstractRPCConnection<Message> {
         this.state = RPCConnectionState.HANDSHAKE_DONE;
     }
 
-    private void readHandshakeResponse() {
+    private void readHandshakeResponse() throws ReadFailureException {
         final byte[] responseBuf = this.receive(0);
         if (responseBuf != null) {
             final Message message = this.gson.fromJson(new String(responseBuf), Message.class);

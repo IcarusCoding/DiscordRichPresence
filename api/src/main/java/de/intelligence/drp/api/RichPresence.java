@@ -19,8 +19,14 @@ public final class RichPresence implements JsonSerializable, Updatable {
     private int partySize;
     private int partySizeMax;
     private String joinSecret;
+    private String matchSecret;
+    private String spectateSecret;
+    private String smallImage;
+    private String largeImage;
 
-    private RichPresence(String state, String details, long startTime, long endTime, String partyId, int partySize, int partySizeMax, String joinSecret, boolean autoUpdate) {
+    private RichPresence(String state, String details, long startTime, long endTime, String partyId, int partySize,
+                         int partySizeMax, String joinSecret, String matchSecret, String spectateSecret,
+                         String smallImage, String largeImage, boolean autoUpdate) {
         this.autoUpdate = autoUpdate;
         this.observers = new HashSet<>();
         this.state = state;
@@ -31,6 +37,10 @@ public final class RichPresence implements JsonSerializable, Updatable {
         this.partySize = partySize;
         this.partySizeMax = partySizeMax;
         this.joinSecret = joinSecret;
+        this.matchSecret = matchSecret;
+        this.spectateSecret = spectateSecret;
+        this.smallImage = smallImage;
+        this.largeImage = largeImage;
     }
 
     @Override
@@ -57,9 +67,28 @@ public final class RichPresence implements JsonSerializable, Updatable {
                             .put(this.partySize)
                             .put(this.partySizeMax)));
         }
+        final JSONObject secretObj = new JSONObject();
         if (this.joinSecret != null) {
-            object.put("secrets", new JSONObject()
-                    .put("join", this.joinSecret));
+            secretObj.put("join", this.joinSecret);
+        }
+        if (this.matchSecret != null) {
+            secretObj.put("match", this.matchSecret);
+        }
+        if (this.spectateSecret != null) {
+            secretObj.put("spectate", this.spectateSecret);
+        }
+        if(!secretObj.keySet().isEmpty()) {
+            object.put("secrets", secretObj);
+        }
+        final JSONObject assetObj = new JSONObject();
+        if(this.smallImage != null) {
+            assetObj.put("small_image", this.smallImage);
+        }
+        if(this.largeImage != null) {
+            assetObj.put("large_image", this.largeImage);
+        }
+        if(!assetObj.keySet().isEmpty()) {
+            object.put("assets", assetObj);
         }
         return object;
     }
@@ -113,6 +142,22 @@ public final class RichPresence implements JsonSerializable, Updatable {
         return this.joinSecret;
     }
 
+    public String getMatchSecret() {
+        return this.matchSecret;
+    }
+
+    public String getSpectateSecret() {
+        return this.spectateSecret;
+    }
+
+    public String getSmallImage() {
+        return this.smallImage;
+    }
+
+    public String getLargeImage() {
+        return this.largeImage;
+    }
+
     public void setState(String state) {
         this.state = state;
         this.update();
@@ -153,6 +198,44 @@ public final class RichPresence implements JsonSerializable, Updatable {
         this.update();
     }
 
+    @Deprecated
+    public void setMatchSecret(String matchSecret) {
+        this.matchSecret = matchSecret;
+        this.update();
+    }
+
+    @Deprecated
+    public void setSpectateSecret(String spectateSecret) {
+        this.spectateSecret = spectateSecret;
+        this.update();
+    }
+
+    public void setSmallImage(String smallImage) {
+        this.smallImage = smallImage;
+        this.update();
+    }
+
+    public void setLargeImage(String largeImage) {
+        this.largeImage = largeImage;
+        this.update();
+    }
+
+    public void clear() {
+        this.state = null;
+        this.details = null;
+        this.startTime = 0;
+        this.endTime = 0;
+        this.partyId = null;
+        this.partySize = 0;
+        this.partySizeMax = 0;
+        this.joinSecret = null;
+        this.matchSecret = null;
+        this.spectateSecret = null;
+        this.smallImage = null;
+        this.largeImage = null;
+        this.update();
+    }
+
     public static final class Builder {
 
         private String state;
@@ -163,10 +246,16 @@ public final class RichPresence implements JsonSerializable, Updatable {
         private int partySize;
         private int partySizeMax;
         private String joinSecret;
+        private String matchSecret;
+        private String spectateSecret;
+        private String smallImage;
+        private String largeImage;
         private boolean autoUpdate;
 
         public RichPresence build() {
-            return new RichPresence(this.state, this.details, this.startTime, this.endTime, this.partyId, this.partySize, this.partySizeMax, this.joinSecret, this.autoUpdate);
+            return new RichPresence(this.state, this.details, this.startTime, this.endTime, this.partyId, this.partySize,
+                    this.partySizeMax, this.joinSecret, this.matchSecret, this.spectateSecret, this.smallImage,
+                    this.largeImage, this.autoUpdate);
         }
 
         public Builder setState(String state) {
@@ -206,6 +295,28 @@ public final class RichPresence implements JsonSerializable, Updatable {
 
         public Builder setJoinSecret(String joinSecret) {
             this.joinSecret = joinSecret;
+            return this;
+        }
+
+        @Deprecated
+        public Builder setMatchSecret(String matchSecret) {
+            this.matchSecret = matchSecret;
+            return this;
+        }
+
+        @Deprecated
+        public Builder setSpectateSecret(String spectateSecret) {
+            this.spectateSecret = spectateSecret;
+            return this;
+        }
+
+        public Builder setSmallImage(String smallImage) {
+            this.smallImage = smallImage;
+            return this;
+        }
+
+        public Builder setLargeImage(String largeImage) {
+            this.largeImage = largeImage;
             return this;
         }
 

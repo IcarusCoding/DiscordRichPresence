@@ -11,7 +11,10 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
+import de.intelligence.drp.api.Subscribable;
+import de.intelligence.drp.api.annotation.AutoSubscribe;
 import de.intelligence.drp.api.annotation.DiscordEventHandler;
+import de.intelligence.drp.api.annotation.EventMetadata;
 import de.intelligence.drp.api.event.DiscordEvent;
 import de.intelligence.drp.core.event.IEventEmitter;
 import de.intelligence.drp.core.util.AnnotationUtils;
@@ -20,10 +23,11 @@ import de.intelligence.drp.core.util.Pair;
 public final class DiscordEventEmitter implements IEventEmitter<DiscordEvent> {
 
     private final ConcurrentHashMap<Class<?>, CopyOnWriteArrayList<EventListener>> handlerMethods;
-
     private final ThreadLocal<Queue<Pair<Object, List<EventListener>>>> threadLocalQueue;
+    private final Subscribable subscribable;
 
-    public DiscordEventEmitter() {
+    public DiscordEventEmitter(Subscribable subscribable) {
+        this.subscribable = Objects.requireNonNull(subscribable);
         this.handlerMethods = new ConcurrentHashMap<>();
         this.threadLocalQueue = ThreadLocal.withInitial(ArrayDeque::new);
     }
@@ -37,31 +41,51 @@ public final class DiscordEventEmitter implements IEventEmitter<DiscordEvent> {
     @Override
     public void register(Object obj) {
         Objects.requireNonNull(obj);
+        boolean autoSubscribe = obj.getClass().isAnnotationPresent(AutoSubscribe.class);
         for (final Method m : AnnotationUtils.getMethodsAnnotatedBy(DiscordEventHandler.class, obj.getClass())) {
             if (m.getParameterCount() != 1) {
                 continue;
             }
             final Class<?> eventParamType = m.getParameterTypes()[0];
+            if (!DiscordEvent.class.isAssignableFrom(eventParamType)) {
+                continue;
+            }
             if (!this.handlerMethods.containsKey(eventParamType)) {
                 this.handlerMethods.put(eventParamType, new CopyOnWriteArrayList<>());
             }
             this.handlerMethods.get(eventParamType)
                     .add(new EventListener(obj, m, m.getAnnotation(DiscordEventHandler.class).priority()));
+            if (autoSubscribe && eventParamType.isAnnotationPresent(EventMetadata.class)) {
+                final EventMetadata metadata = eventParamType.getAnnotation(EventMetadata.class);
+                if (metadata.needsSubscription()) {
+                    this.subscribable.subscribe(metadata.eventType());
+                }
+            }
         }
     }
 
     @Override
     public void unregister(Object obj) {
         Objects.requireNonNull(obj);
+        boolean autoSubscribe = obj.getClass().isAnnotationPresent(AutoSubscribe.class);
         for (final Method m : AnnotationUtils.getMethodsAnnotatedBy(DiscordEventHandler.class, obj.getClass())) {
             if (m.getParameterCount() != 1) {
                 continue;
             }
             final Class<?> eventParamType = m.getParameterTypes()[0];
+            if (!DiscordEvent.class.isAssignableFrom(eventParamType)) {
+                continue;
+            }
             if (!this.handlerMethods.containsKey(eventParamType)) {
                 continue;
             }
             this.handlerMethods.get(eventParamType).removeIf(e -> e.method.equals(m));
+            if (autoSubscribe && eventParamType.isAnnotationPresent(EventMetadata.class)) {
+                final EventMetadata metadata = eventParamType.getAnnotation(EventMetadata.class);
+                if (metadata.needsSubscription()) {
+                    this.subscribable.unsubscribe(metadata.eventType());
+                }
+            }
         }
     }
 

@@ -40,7 +40,6 @@ public final class Frame {
         byte[] payload = new byte[0];
         if (buf.length > 3) {
             opcode = ByteBuffer.allocate(4).order(ByteOrder.nativeOrder()).put(buf, 0, 4).flip().getInt();
-            System.out.println(opcode);
         }
         if (buf.length > 7) {
             length = ByteBuffer.allocate(4).order(ByteOrder.nativeOrder()).put(buf, 4, 4).flip().getInt();

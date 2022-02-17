@@ -14,7 +14,7 @@ public final class Discord {
     public static IDiscord create(String applicationId) {
         try {
             final Class<?> implClazz = Class.forName(Discord.IMPLEMENTATION);
-            final Constructor<?> instConstructor = implClazz.getConstructor(String.class);
+            final Constructor<?> instConstructor = implClazz.getDeclaredConstructor(String.class);
             if(!instConstructor.trySetAccessible()) {
                 throw new ImplementationNotFoundException("Failed to access implementation " + Discord.IMPLEMENTATION);
             }

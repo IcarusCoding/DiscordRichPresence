@@ -8,4 +8,6 @@ public sealed interface IRPCConnection<T> extends IConnection permits AbstractRP
 
     void addEventHandler(IRPCEventHandler<T> eventHandler);
 
+    void removeEventHandler(IRPCEventHandler<T> eventHandler);
+
 }

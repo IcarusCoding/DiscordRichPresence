@@ -2,6 +2,7 @@ package de.intelligence.drp.core.dc;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.Objects;
 import java.util.Queue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -22,8 +23,10 @@ import org.json.JSONObject;
 import de.intelligence.drp.api.IDiscord;
 import de.intelligence.drp.api.RichPresence;
 import de.intelligence.drp.api.Updatable;
+import de.intelligence.drp.api.event.ActivityJoinEvent;
 import de.intelligence.drp.api.event.CloseEvent;
 import de.intelligence.drp.api.event.DiscordEvent;
+import de.intelligence.drp.api.event.EventType;
 import de.intelligence.drp.api.event.ReadyEvent;
 import de.intelligence.drp.api.user.IDiscordUser;
 import de.intelligence.drp.core.connection.IIPCConnection;
@@ -37,13 +40,14 @@ import de.intelligence.drp.core.dc.json.MessageDeserializer;
 import de.intelligence.drp.core.dc.pojo.ConnectionInfo;
 import de.intelligence.drp.core.dc.pojo.DiscordUserImpl;
 import de.intelligence.drp.core.dc.proto.Command;
-import de.intelligence.drp.core.dc.proto.EventTypes;
 import de.intelligence.drp.core.dc.proto.Frame;
+import de.intelligence.drp.core.dc.proto.InternalEventType;
 import de.intelligence.drp.core.dc.proto.Opcode;
 import de.intelligence.drp.core.event.IEventEmitter;
 import de.intelligence.drp.core.os.OSUtils;
 
-final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message> {
+//TODO add threading support
+public final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message> {
 
     private final String applicationId;
     private final IEventEmitter<DiscordEvent> eventEmitter;
@@ -54,6 +58,7 @@ final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message> {
     private final ReentrantLock reentrantLock;
     private final Condition condition;
     private final Queue<Frame> queueOut;
+    private final EnumSet<InternalEventType> subscriptions;
 
     private RichPresence currentPresence;
     private boolean initialized;
@@ -61,9 +66,9 @@ final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message> {
     private IDiscordUser connectedDiscordUser;
     private int nonce;
 
-    public DiscordWrapper(String applicationId) {
+    DiscordWrapper(String applicationId) {
         this.applicationId = applicationId;
-        this.eventEmitter = new DiscordEventEmitter();
+        this.eventEmitter = new DiscordEventEmitter(this);
         this.pid = OSUtils.getOsDependent().getCurrentPID();
         this.gson = new GsonBuilder().registerTypeAdapter(Message.class, new MessageDeserializer()).create();
         final IIPCConnection ipcConn = new IPCConnectionImpl();
@@ -80,6 +85,7 @@ final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message> {
         this.reentrantLock = new ReentrantLock();
         this.condition = this.reentrantLock.newCondition();
         this.queueOut = new LinkedBlockingQueue<>();
+        this.subscriptions = EnumSet.noneOf(InternalEventType.class);
     }
 
     @Override
@@ -108,8 +114,7 @@ final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message> {
                 .put("args", new JSONObject()
                         .put("pid", this.pid)
                         .put("activity", presence.convertToJson()));
-        System.out.println("WANTED ACTIVITY: " + rootJson.toString());
-        final Frame activityUpdateFrame = this.createFrame(rootJson.toString());
+        final Frame activityUpdateFrame = DiscordWrapper.createFrame(rootJson.toString().getBytes(StandardCharsets.UTF_8));
         this.queueOut.add(activityUpdateFrame);
     }
 
@@ -132,6 +137,7 @@ final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message> {
             this.update();
         }
         this.rpcConnection.disconnect();
+        this.rpcConnection.removeEventHandler(this);
         this.currentPresence = null;
         this.queueOut.clear();
         this.abort = false;
@@ -145,8 +151,37 @@ final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message> {
         this.abort = true;
     }
 
+    @Override
+    public void subscribe(EventType type) {
+        if (type != EventType.NONE) {
+            final InternalEventType convType = InternalEventType.fromEventType(type);
+            if (!convType.equals(InternalEventType.NONE) && !this.subscriptions.contains(convType)) {
+                this.subscriptions.add(convType);
+                this.subscribe0(convType);
+            }
+        }
+    }
+
+    @Override
+    public void unsubscribe(EventType type) {
+        if (type != EventType.NONE) {
+            final InternalEventType convType = InternalEventType.fromEventType(type);
+            if (!convType.equals(InternalEventType.NONE) && this.subscriptions.contains(convType)) {
+                this.subscriptions.remove(convType);
+                this.unsubscribe0(convType);
+            }
+        }
+    }
+
+    private void subscribe0(InternalEventType type) {
+        this.queueOut.add(DiscordWrapper.createFrame(DiscordWrapper.createSimpleJson(Command.SUBSCRIBE, type, this.nonce++)));
+    }
+
+    private void unsubscribe0(InternalEventType type) {
+        this.queueOut.add(DiscordWrapper.createFrame(DiscordWrapper.createSimpleJson(Command.UNSUBSCRIBE, type, this.nonce++)));
+    }
+
     private void update() {
-        System.out.println("UPDATE CONN");
         if (!this.rpcConnection.isConnected()) {
             this.retryFunc.get();
             return;
@@ -158,12 +193,11 @@ final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message> {
             }
             final Message message = this.gson.fromJson(new String(readBuf), Message.class);
             if (message.hasNonce()) {
-                System.out.println("RECV: " + message);
-                if (message.getEvent() == EventTypes.ERROR) {
+                if (message.getEvent() == InternalEventType.ERROR) {
                     System.out.println("ERROR");
                 }
-            } else {
-                System.out.println("NO NONCE <---------- TODO");
+            } else if(message.getEvent() == InternalEventType.ACTIVITY_JOIN && message.getData().has("secret")) {
+                this.eventEmitter.emit(new ActivityJoinEvent(this, message.getData().get("secret").getAsString()));
             }
         }
         while (!this.queueOut.isEmpty()) {
@@ -172,11 +206,18 @@ final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message> {
         }
     }
 
-    private Frame createFrame(String json) {
+    private static byte[] createSimpleJson(Command command, InternalEventType eventType, int nonce) {
+        return new JSONObject()
+                .put("cmd", command.name())
+                .put("evt", eventType.name())
+                .put("nonce", Integer.toString(nonce))
+                .toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static Frame createFrame(byte[] json) {
         final byte[] payloadBuf = new byte[DiscordConsts.FRAME_LENGTH - 8]; // subtract header
-        final byte[] source = json.getBytes(StandardCharsets.UTF_8);
-        System.arraycopy(source, 0, payloadBuf, 0, source.length);
-        return new Frame(Opcode.FRAME, source.length, payloadBuf);
+        System.arraycopy(json, 0, payloadBuf, 0, json.length);
+        return new Frame(Opcode.FRAME, json.length, payloadBuf);
     }
 
     @Override

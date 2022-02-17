@@ -1,7 +1,6 @@
 package de.intelligence.drp.api;
 
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 
 import org.json.JSONArray;
@@ -19,8 +18,9 @@ public final class RichPresence implements JsonSerializable, Updatable {
     private String partyId;
     private int partySize;
     private int partySizeMax;
+    private String joinSecret;
 
-    private RichPresence(String state, String details, long startTime, long endTime, String partyId, int partySize, int partySizeMax, boolean autoUpdate) {
+    private RichPresence(String state, String details, long startTime, long endTime, String partyId, int partySize, int partySizeMax, String joinSecret, boolean autoUpdate) {
         this.autoUpdate = autoUpdate;
         this.observers = new HashSet<>();
         this.state = state;
@@ -30,6 +30,7 @@ public final class RichPresence implements JsonSerializable, Updatable {
         this.partyId = partyId;
         this.partySize = partySize;
         this.partySizeMax = partySizeMax;
+        this.joinSecret = joinSecret;
     }
 
     @Override
@@ -41,10 +42,13 @@ public final class RichPresence implements JsonSerializable, Updatable {
         if (this.details != null) {
             object.put("details", this.details);
         }
-        if (this.startTime > 0 && this.endTime > 0 && this.startTime < this.endTime) {
-            object.put("timestamps", new JSONObject()
-                    .put("start", this.startTime)
-                    .put("end", this.endTime));
+        if (this.startTime > 0) {
+            final JSONObject timestamps = new JSONObject()
+                    .put("start", this.startTime);
+            if(this.endTime > 0 && this.startTime < this.endTime) {
+                timestamps.put("end", this.endTime);
+            }
+            object.put("timestamps", timestamps);
         }
         if (this.partyId != null && this.partySize > -1 && this.partySizeMax >= this.partySize) {
             object.put("party", new JSONObject()
@@ -52,6 +56,10 @@ public final class RichPresence implements JsonSerializable, Updatable {
                     .put("size", new JSONArray()
                             .put(this.partySize)
                             .put(this.partySizeMax)));
+        }
+        if (this.joinSecret != null) {
+            object.put("secrets", new JSONObject()
+                    .put("join", this.joinSecret));
         }
         return object;
     }
@@ -68,11 +76,7 @@ public final class RichPresence implements JsonSerializable, Updatable {
 
     @Override
     public void update() {
-        if(this.autoUpdate) {
-            long newStart = System.currentTimeMillis();
-            if(this.startTime > 0 && this.endTime > this.startTime && newStart < this.endTime) {
-                this.startTime = newStart;
-            }
+        if (this.autoUpdate) {
             this.observers.forEach(o -> o.notifyUpdate(this));
         }
     }
@@ -103,6 +107,10 @@ public final class RichPresence implements JsonSerializable, Updatable {
 
     public int getPartySizeMax() {
         return this.partySizeMax;
+    }
+
+    public String getJoinSecret() {
+        return this.joinSecret;
     }
 
     public void setState(String state) {
@@ -140,6 +148,11 @@ public final class RichPresence implements JsonSerializable, Updatable {
         this.update();
     }
 
+    public void setJoinSecret(String joinSecret) {
+        this.joinSecret = joinSecret;
+        this.update();
+    }
+
     public static final class Builder {
 
         private String state;
@@ -149,10 +162,11 @@ public final class RichPresence implements JsonSerializable, Updatable {
         private String partyId;
         private int partySize;
         private int partySizeMax;
+        private String joinSecret;
         private boolean autoUpdate;
 
         public RichPresence build() {
-            return new RichPresence(this.state, this.details, this.startTime, this.endTime, this.partyId, this.partySize, this.partySizeMax, this.autoUpdate);
+            return new RichPresence(this.state, this.details, this.startTime, this.endTime, this.partyId, this.partySize, this.partySizeMax, this.joinSecret, this.autoUpdate);
         }
 
         public Builder setState(String state) {
@@ -187,6 +201,11 @@ public final class RichPresence implements JsonSerializable, Updatable {
 
         public Builder setPartySizeMax(int partySizeMax) {
             this.partySizeMax = partySizeMax;
+            return this;
+        }
+
+        public Builder setJoinSecret(String joinSecret) {
+            this.joinSecret = joinSecret;
             return this;
         }
 

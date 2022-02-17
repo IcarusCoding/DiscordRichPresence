@@ -4,7 +4,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.annotations.SerializedName;
 
 import de.intelligence.drp.core.dc.proto.Command;
-import de.intelligence.drp.core.dc.proto.EventTypes;
+import de.intelligence.drp.core.dc.proto.InternalEventType;
 
 public final class Message {
 
@@ -14,14 +14,14 @@ public final class Message {
     private final JsonObject data;
 
     @SerializedName("evt")
-    private final EventTypes event;
+    private final InternalEventType event;
 
     private final String nonce;
 
-    public Message(Command command, JsonObject data, EventTypes event, String nonce) {
+    public Message(Command command, JsonObject data, InternalEventType event, String nonce) {
         this.command = command == null ? Command.NONE : command;
         this.data = data;
-        this.event = event == null ? EventTypes.NONE : event;
+        this.event = event == null ? InternalEventType.NONE : event;
         this.nonce = nonce;
     }
 
@@ -43,7 +43,7 @@ public final class Message {
         return this.data;
     }
 
-    public EventTypes getEvent() {
+    public InternalEventType getEvent() {
         return this.event;
     }
 

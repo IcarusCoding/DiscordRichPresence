@@ -1,6 +1,6 @@
 package de.intelligence.drp.api;
 
-public interface IDiscord extends Observer  {
+public interface IDiscord extends Observer, Subscribable {
 
     void registerEventHandler(Object obj);
 

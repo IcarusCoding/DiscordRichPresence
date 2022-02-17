@@ -12,7 +12,7 @@ import de.intelligence.drp.core.dc.DiscordConsts;
 import de.intelligence.drp.core.dc.json.Message;
 import de.intelligence.drp.core.dc.pojo.ConnectionInfo;
 import de.intelligence.drp.core.dc.proto.Command;
-import de.intelligence.drp.core.dc.proto.EventTypes;
+import de.intelligence.drp.core.dc.proto.InternalEventType;
 import de.intelligence.drp.core.dc.proto.Frame;
 import de.intelligence.drp.core.dc.proto.Opcode;
 
@@ -29,7 +29,6 @@ public final class DiscordRPCConnection extends AbstractRPCConnection<Message> {
 
     @Override
     public void connect() {
-        System.out.println("TRYING TO CONNECT");
         if (super.state == RPCConnectionState.CONNECT) {
             return;
         }
@@ -72,7 +71,6 @@ public final class DiscordRPCConnection extends AbstractRPCConnection<Message> {
             }
             constructedFrame = Frame.fromByteArray(headerBuf);
             constructedFrame.setPayload(super.ipcConnection.receive(constructedFrame.getLength()));
-            System.out.println("FROM: " + constructedFrame);
             boolean shouldReturn = false;
             switch (constructedFrame.getOpcode()) { //TODO NPE when opcode is not registered
                 case FRAME -> shouldReturn = true;
@@ -105,7 +103,7 @@ public final class DiscordRPCConnection extends AbstractRPCConnection<Message> {
         final byte[] responseBuf = this.receive(0);
         if (responseBuf != null) {
             final Message message = this.gson.fromJson(new String(responseBuf), Message.class);
-            if (message.getCommand() == Command.DISPATCH && message.getEvent() == EventTypes.READY) {
+            if (message.getCommand() == Command.DISPATCH && message.getEvent() == InternalEventType.READY) {
                 super.eventHandlers.forEach(e -> e.onConnect(message));
                 this.state = RPCConnectionState.CONNECT;
             }

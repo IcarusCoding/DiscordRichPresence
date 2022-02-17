@@ -47,7 +47,6 @@ public final class IPCConnectionImpl implements IIPCConnection {
         if (this.connected) {
             return;
         }
-        System.out.println(IPCConnectionImpl.WIN_PIPE_PREFIX + selectedPipe);
         this.hNamedPipe = this.kernel32.CreateFileA(IPCConnectionImpl.WIN_PIPE_PREFIX + selectedPipe,
                 WinNT.GENERIC_READ | WinNT.GENERIC_WRITE, 0, null,
                 WinNT.OPEN_EXISTING, 0, null);

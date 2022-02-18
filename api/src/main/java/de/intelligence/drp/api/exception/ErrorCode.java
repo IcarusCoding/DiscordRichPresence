@@ -13,18 +13,18 @@ public enum ErrorCode {
     BYTE_MISMATCH(0x06),
     PIPE_ENDED(0x07);
 
-    private final int errorCode;
+    private final int code;
 
-    ErrorCode(int errorCode) {
-        this.errorCode = errorCode;
+    ErrorCode(int code) {
+        this.code = code;
     }
 
-    public int getErrorCode() {
-        return this.errorCode;
+    public int getCode() {
+        return this.code;
     }
 
     public static ErrorCode getFromInt(int errorCode) {
-        return Arrays.stream(ErrorCode.values()).filter(e -> e.errorCode == errorCode).findAny().orElse(ErrorCode.UNSPECIFIED);
+        return Arrays.stream(ErrorCode.values()).filter(e -> e.code == errorCode).findAny().orElse(ErrorCode.UNSPECIFIED);
     }
 
 }

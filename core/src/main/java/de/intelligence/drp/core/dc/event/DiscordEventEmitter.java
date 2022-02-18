@@ -111,8 +111,7 @@ public final class DiscordEventEmitter implements IEventEmitter<DiscordEvent> {
                 }
                 try {
                     listener.method.invoke(listener.subObj, currentPair.get().getLeft());
-                } catch (ReflectiveOperationException ignored) {
-                }
+                } catch (ReflectiveOperationException ignored) {}
                 if (!canAccess) {
                     listener.method.setAccessible(false);
                 }
@@ -122,7 +121,6 @@ public final class DiscordEventEmitter implements IEventEmitter<DiscordEvent> {
         return true;
     }
 
-    private record EventListener(Object subObj, Method method, int priority) {
-    }
+    private record EventListener(Object subObj, Method method, int priority) {}
 
 }

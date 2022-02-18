@@ -67,19 +67,13 @@ public final class DiscordRPCConnection extends AbstractRPCConnection<Message> {
     public byte[] receive(int size) throws ReadFailureException {
         Frame constructedFrame = null;
         while (true) {
-            byte[] headerBuf = super.ipcConnection.receive(8);
+            byte[] headerBuf = super.ipcConnection.receive(DiscordConsts.HEADER_SIZE);
             if (headerBuf.length == 0) {
-                return null;
+                return new byte[] {};
             }
             constructedFrame = Frame.fromByteArray(headerBuf);
             constructedFrame.setPayload(super.ipcConnection.receive(constructedFrame.getLength()));
-            boolean shouldReturn = false;
-            switch (constructedFrame.getOpcode()) { //TODO NPE when opcode is not registered
-                case FRAME -> shouldReturn = true;
-                default -> {
-                }
-            }
-            if (shouldReturn) {
+            if (constructedFrame.getOpcode() == Opcode.FRAME) {
                 return constructedFrame.getPayload();
             }
         }
@@ -94,17 +88,17 @@ public final class DiscordRPCConnection extends AbstractRPCConnection<Message> {
     }
 
     private void doHandshake() throws WriteFailureException {
-        final byte[] payloadBuf = new byte[DiscordConsts.FRAME_LENGTH - 8]; // subtract header
+        final byte[] payloadBuf = new byte[DiscordConsts.FRAME_LENGTH - DiscordConsts.HEADER_SIZE]; // subtract header
         final byte[] source = this.gson.toJson(this.info).getBytes(StandardCharsets.UTF_8);
         System.arraycopy(source, 0, payloadBuf, 0, source.length);
-        this.ipcConnection.send(new Frame(Opcode.HANDSHAKE, source.length, payloadBuf).toByteArray(), 8 + source.length);
+        this.ipcConnection.send(new Frame(Opcode.HANDSHAKE, source.length, payloadBuf).toByteArray(), DiscordConsts.HEADER_SIZE + source.length);
         this.state = RPCConnectionState.HANDSHAKE_DONE;
     }
 
     private void readHandshakeResponse() throws ReadFailureException {
         final byte[] responseBuf = this.receive(0);
-        if (responseBuf != null) {
-            final Message message = this.gson.fromJson(new String(responseBuf), Message.class);
+        if (responseBuf.length != 0) {
+            final Message message = this.gson.fromJson(new String(responseBuf, StandardCharsets.UTF_8), Message.class);
             if (message.getCommand() == Command.DISPATCH && message.getEvent() == InternalEventType.READY) {
                 super.eventHandlers.forEach(e -> e.onConnect(message));
                 this.state = RPCConnectionState.CONNECT;

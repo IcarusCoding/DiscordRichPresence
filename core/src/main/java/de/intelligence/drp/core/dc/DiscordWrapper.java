@@ -4,8 +4,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Queue;
+import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Condition;
@@ -48,26 +51,25 @@ import de.intelligence.drp.core.dc.proto.InternalEventType;
 import de.intelligence.drp.core.dc.proto.Opcode;
 import de.intelligence.drp.core.event.IEventEmitter;
 import de.intelligence.drp.core.exception.ConnectionException;
-import de.intelligence.drp.core.exception.ConnectionFailureException;
 import de.intelligence.drp.core.exception.InvalidMessageException;
 import de.intelligence.drp.core.exception.ReadFailureException;
 import de.intelligence.drp.core.exception.WriteFailureException;
 import de.intelligence.drp.core.os.OSUtils;
 
-//TODO add threading support
 public final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message> {
 
     private final String applicationId;
     private final IEventEmitter<DiscordEvent> eventEmitter;
     private final int pid;
     private final Gson gson;
-    private final AtomicReference<ConnectionException> lastException;
+    private final AtomicReference<Exception> lastException;
     private final IRPCConnection<Message> rpcConnection;
     private final Supplier<Boolean> retryFunc;
     private final ReentrantLock reentrantLock;
     private final Condition condition;
     private final Queue<Frame> queueOut;
     private final EnumSet<InternalEventType> subscriptions;
+    private final ScheduledExecutorService schedulerOut;
 
     private RichPresence currentPresence;
     private boolean initialized;
@@ -91,6 +93,7 @@ public final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message>
                 .retryOnResult(a -> a).build()), () -> {
             try {
                 this.rpcConnection.connect();
+                this.lastException.set(null);
             } catch (ConnectionException ex) {
                 this.lastException.set(ex);
             }
@@ -100,6 +103,11 @@ public final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message>
         this.condition = this.reentrantLock.newCondition();
         this.queueOut = new LinkedBlockingQueue<>();
         this.subscriptions = EnumSet.noneOf(InternalEventType.class);
+        this.schedulerOut = Executors.newScheduledThreadPool(1, r -> {
+            final Thread t = Executors.defaultThreadFactory().newThread(r);
+            t.setDaemon(true);
+            return t;
+        });
     }
 
     @Override
@@ -124,47 +132,37 @@ public final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message>
         }
         final JSONObject rootJson = new JSONObject()
                 .put("cmd", Command.SET_ACTIVITY.name())
-                .put("nonce", Integer.toString(this.nonce++))
+                .put("nonce", Integer.toString(this.nonce))
                 .put("args", new JSONObject()
                         .put("pid", this.pid)
                         .put("activity", presence.convertToJson()));
+        this.nonce++;
         final Frame activityUpdateFrame = DiscordWrapper.createFrame(rootJson.toString().getBytes(StandardCharsets.UTF_8));
         this.queueOut.add(activityUpdateFrame);
     }
 
     @Override
     public void connect() {
+        this.connect(false);
+    }
+
+    @Override
+    public void connectAsync() {
+        this.connect(true);
+    }
+
+    private void connect(boolean startNewThread) {
         if (this.initialized) {
             return;
         }
         this.rpcConnection.addEventHandler(this);
-        this.initialized = true;
-        try {
-            this.update();
-            this.terminateIfError();
-            while (!this.abort) {
-                this.reentrantLock.lock();
-                try {
-                    this.condition.await(DiscordConsts.MAX_ACTIVITY_WAIT, TimeUnit.MILLISECONDS);
-                } catch (InterruptedException ex) {
-                    ex.printStackTrace();
-                    return;
-                }
-                this.update();
-            }
-        } catch (ReadFailureException | WriteFailureException | InvalidMessageException ex) {
-            this.lastException.set(ex);
-            this.terminateIfError();
+        if (!startNewThread) {
+            this.connect0();
+        } else {
+            final Thread t = new Thread(this::connect0);
+            t.setDaemon(true);
+            t.start();
         }
-        this.rpcConnection.disconnect();
-        this.rpcConnection.removeEventHandler(this);
-        this.currentPresence = null;
-        this.queueOut.clear();
-        this.abort = false;
-        this.nonce = 0;
-        this.connectedDiscordUser = null;
-        this.lastException.set(null);
-        this.initialized = false;
     }
 
     @Override
@@ -173,10 +171,20 @@ public final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message>
     }
 
     @Override
+    public Optional<IDiscordUser> getConnectedUser() {
+        return Optional.ofNullable(this.connectedDiscordUser);
+    }
+
+    @Override
+    public String getApplicationId() {
+        return this.applicationId;
+    }
+
+    @Override
     public void subscribe(EventType type) {
         if (type != EventType.NONE) {
             final InternalEventType convType = InternalEventType.fromEventType(type);
-            if (!convType.equals(InternalEventType.NONE) && !this.subscriptions.contains(convType)) {
+            if (convType != InternalEventType.NONE && !this.subscriptions.contains(convType)) {
                 this.subscriptions.add(convType);
                 this.subscribe0(convType);
             }
@@ -187,32 +195,75 @@ public final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message>
     public void unsubscribe(EventType type) {
         if (type != EventType.NONE) {
             final InternalEventType convType = InternalEventType.fromEventType(type);
-            if (!convType.equals(InternalEventType.NONE) && this.subscriptions.contains(convType)) {
+            if (convType != InternalEventType.NONE && this.subscriptions.contains(convType)) {
                 this.subscriptions.remove(convType);
                 this.unsubscribe0(convType);
             }
         }
     }
 
+    private void connect0() {
+        this.initialized = true;
+        try {
+            this.update();
+            this.terminateIfError();
+            this.schedulerOut.scheduleAtFixedRate(() -> {
+                if (this.rpcConnection.isConnected() && !this.queueOut.isEmpty()) {
+                    final Frame frameOut = this.queueOut.poll();
+                    try {
+                        this.rpcConnection.send(frameOut.toByteArray(), frameOut.getFullLength());
+                    } catch (WriteFailureException ex) {
+                        this.lastException.set(ex);
+                    }
+                }
+            }, 0, DiscordConsts.OUTBOUND_DELAY, TimeUnit.MILLISECONDS);
+            while (!this.abort) {
+                this.reentrantLock.lock();
+                if (!this.await()) {
+                    this.terminateIfError();
+                    return;
+                }
+                this.update();
+            }
+        } catch (ReadFailureException | InvalidMessageException ex) {
+            this.lastException.set(ex);
+            this.terminateIfError();
+        }
+        this.schedulerOut.shutdownNow();
+        this.rpcConnection.disconnect();
+    }
+
+    private boolean await() {
+        try {
+            this.condition.await(DiscordConsts.MAX_ACTIVITY_WAIT, TimeUnit.MILLISECONDS);
+            return true;
+        } catch (InterruptedException ex) {
+            this.lastException.set(ex);
+        }
+        return false;
+    }
+
     private void subscribe0(InternalEventType type) {
-        this.queueOut.add(DiscordWrapper.createFrame(DiscordWrapper.createSimpleJson(Command.SUBSCRIBE, type, this.nonce++)));
+        this.queueOut.add(DiscordWrapper.createFrame(DiscordWrapper.createSimpleJson(Command.SUBSCRIBE, type, this.nonce)));
+        this.nonce++;
     }
 
     private void unsubscribe0(InternalEventType type) {
-        this.queueOut.add(DiscordWrapper.createFrame(DiscordWrapper.createSimpleJson(Command.UNSUBSCRIBE, type, this.nonce++)));
+        this.queueOut.add(DiscordWrapper.createFrame(DiscordWrapper.createSimpleJson(Command.UNSUBSCRIBE, type, this.nonce)));
+        this.nonce++;
     }
 
-    private void update() throws ReadFailureException, WriteFailureException, InvalidMessageException {
+    private void update() throws ReadFailureException, InvalidMessageException {
         if (!this.rpcConnection.isConnected()) {
             this.retryFunc.get();
             return;
         }
         while (true) {
             final byte[] readBuf = this.rpcConnection.receive(0);
-            if (readBuf == null) {
+            if (readBuf.length == 0) {
                 break;
             }
-            final Message message = this.gson.fromJson(new String(readBuf), Message.class);
+            final Message message = this.gson.fromJson(new String(readBuf, StandardCharsets.UTF_8), Message.class);
             if (message.hasNonce()) {
                 if (message.getEvent() == InternalEventType.ERROR) {
                     throw new InvalidMessageException(message.getData().get("message").getAsString(), ErrorCode.UNSPECIFIED);
@@ -221,21 +272,12 @@ public final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message>
                 this.eventEmitter.emit(new ActivityJoinEvent(this, message.getData().get("secret").getAsString()));
             }
         }
-        while (!this.queueOut.isEmpty()) {
-            final Frame frameOut = this.queueOut.poll();
-            this.rpcConnection.send(frameOut.toByteArray(), frameOut.getFullLength());
-            try {
-                Thread.sleep(100); //TODO create own scheduler when threading is implemented
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        }
     }
 
     private void terminateIfError() {
-        final ConnectionException lastEx = this.lastException.get();
+        final Exception lastEx = this.lastException.get();
         if (lastEx != null) {
-            this.eventEmitter.emit(new ErrorEvent(lastEx, lastEx.getErrorCode()));
+            this.eventEmitter.emit(new ErrorEvent(lastEx, lastEx instanceof ConnectionException ex ? ex.getErrorCode() : ErrorCode.UNSPECIFIED));
             this.disconnect();
         }
     }
@@ -249,7 +291,7 @@ public final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message>
     }
 
     private static Frame createFrame(byte[] json) {
-        final byte[] payloadBuf = new byte[DiscordConsts.FRAME_LENGTH - 8]; // subtract header
+        final byte[] payloadBuf = new byte[DiscordConsts.FRAME_LENGTH - DiscordConsts.HEADER_SIZE];
         System.arraycopy(json, 0, payloadBuf, 0, json.length);
         return new Frame(Opcode.FRAME, json.length, payloadBuf);
     }
@@ -263,6 +305,14 @@ public final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message>
 
     @Override
     public void onDisconnect() {
+        this.rpcConnection.removeEventHandler(this);
+        this.currentPresence = null;
+        this.queueOut.clear();
+        this.abort = false;
+        this.nonce = 0;
+        this.connectedDiscordUser = null;
+        this.lastException.set(null);
+        this.initialized = false;
         this.eventEmitter.emit(new CloseEvent());
     }
 

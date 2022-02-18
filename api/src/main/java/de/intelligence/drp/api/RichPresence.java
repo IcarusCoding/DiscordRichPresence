@@ -60,7 +60,7 @@ public final class RichPresence implements JsonSerializable, Updatable {
             }
             object.put("timestamps", timestamps);
         }
-        if (this.partyId != null && this.partySize > -1 && this.partySizeMax >= this.partySize) {
+        if (this.partyId != null && this.partySize > 0 && this.partySizeMax >= this.partySize) {
             object.put("party", new JSONObject()
                     .put("id", this.partyId)
                     .put("size", new JSONArray()

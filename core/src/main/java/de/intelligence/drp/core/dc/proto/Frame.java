@@ -46,7 +46,7 @@ public final class Frame {
         }
         if (buf.length > 8) {
             payload = new byte[buf.length - 8];
-            System.arraycopy(buf, 9, payload, 0, payload.length); // 8 or 9?
+            System.arraycopy(buf, 9, payload, 0, payload.length);
         }
         return new Frame(Opcode.fromCode(opcode), length, payload);
     }

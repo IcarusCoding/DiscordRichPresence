@@ -1,5 +1,9 @@
 package de.intelligence.drp.api;
 
+import java.util.Optional;
+
+import de.intelligence.drp.api.user.IDiscordUser;
+
 public interface IDiscord extends Observer, Subscribable {
 
     void registerEventHandler(Object obj);
@@ -10,6 +14,12 @@ public interface IDiscord extends Observer, Subscribable {
 
     void connect();
 
+    void connectAsync();
+
     void disconnect();
+
+    Optional<IDiscordUser> getConnectedUser();
+
+    String getApplicationId();
 
 }

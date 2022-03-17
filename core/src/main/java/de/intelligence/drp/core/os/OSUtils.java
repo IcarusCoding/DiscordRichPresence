@@ -12,10 +12,10 @@ public final class OSUtils {
             OS_DEPENDENT = new WindowsDependent();
         } else if (fullOS.contains("mac")) {
             CURRENT_OS = OS.MAC;
-            OS_DEPENDENT = null;
+            OS_DEPENDENT = new MacDependent();
         } else if (fullOS.contains("nux")) {
             CURRENT_OS = OS.NUX;
-            OS_DEPENDENT = null;
+            OS_DEPENDENT = new LinuxDependent();
         } else {
             CURRENT_OS = OS.UNKNOWN;
             OS_DEPENDENT = null;

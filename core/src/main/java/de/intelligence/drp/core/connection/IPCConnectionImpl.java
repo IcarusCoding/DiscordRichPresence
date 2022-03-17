@@ -16,20 +16,18 @@ import de.intelligence.drp.api.exception.ErrorCode;
 import de.intelligence.drp.core.exception.InitializationFailedException;
 import de.intelligence.drp.core.exception.ReadFailureException;
 import de.intelligence.drp.core.exception.WriteFailureException;
+import de.intelligence.drp.core.os.OSDependent;
 import de.intelligence.drp.core.os.OSUtils;
-import de.intelligence.drp.core.os.WindowsDependent;
 
 public final class IPCConnectionImpl implements IIPCConnection {
 
-    private static final String WIN_PIPE_PREFIX = "\\\\.\\pipe\\";
-
     private final List<String> validPipes;
+    private final OSDependent osDependent;
 
     private boolean initialized;
     private boolean connected;
     private String selectedPipe;
-    private WinNT.HANDLE hNamedPipe;
-    private WindowsDependent.Kernel32 kernel32; //TODO change
+    private OSDependent.Pipe pipe;
 
     public IPCConnectionImpl() {
         this(new ArrayList<>());
@@ -37,7 +35,7 @@ public final class IPCConnectionImpl implements IIPCConnection {
 
     public IPCConnectionImpl(List<String> validPipes) {
         this.validPipes = new ArrayList<>(validPipes);
-        this.kernel32 = ((WindowsDependent) OSUtils.getOsDependent()).getKernel32();
+        this.osDependent = OSUtils.getOsDependent();
     }
 
     @Override
@@ -48,19 +46,9 @@ public final class IPCConnectionImpl implements IIPCConnection {
         if (this.connected) {
             return;
         }
-        this.hNamedPipe = this.kernel32.CreateFileA(IPCConnectionImpl.WIN_PIPE_PREFIX + selectedPipe,
-                WinNT.GENERIC_READ | WinNT.GENERIC_WRITE, 0, null,
-                WinNT.OPEN_EXISTING, 0, null);
-        if (this.hNamedPipe != WinNT.INVALID_HANDLE_VALUE) {
-            final int lastError = this.kernel32.GetLastError();
-            if(lastError != 0) {
-                switch (lastError) {
-                    case 0x02 -> throw new ConnectionFailureException("Could not find named pipe " + this.selectedPipe, ErrorCode.PIPE_NOT_FOUND);
-                    case 0x05 -> throw new ConnectionFailureException("Could not open named pipe " + this.selectedPipe + ": Access denied", ErrorCode.ACCESS_DENIED);
-                    case 0xE7 -> throw new ConnectionFailureException("Could not open named pipe " + this.selectedPipe + ": Pipe is busy", ErrorCode.PIPE_BUSY);
-                    default -> throw new ConnectionFailureException("Could not open named pipe " + this.selectedPipe + ": Unknown error (" + lastError + ")", ErrorCode.UNSPECIFIED);
-                }
-            }
+        this.pipe = this.osDependent.createPipe(this.osDependent.getPipePrefix() + this.selectedPipe);
+        if (!this.pipe.isInvalid()) {
+            this.pipe.checkError();
         }
         this.connected = true;
     }
@@ -70,8 +58,8 @@ public final class IPCConnectionImpl implements IIPCConnection {
         if (!this.connected) {
             return;
         }
-        this.kernel32.CloseHandle(this.hNamedPipe);
-        this.hNamedPipe = null;
+        this.pipe.close();
+        this.pipe = null;
         this.connected = false;
     }
 
@@ -80,15 +68,7 @@ public final class IPCConnectionImpl implements IIPCConnection {
         if (!this.connected) {
             throw new IllegalStateException("No connection was established!");
         }
-        final IntByReference writtenRef = new IntByReference();
-        if (!this.kernel32.WriteFile(this.hNamedPipe, payload, payloadSize, writtenRef, null)) {
-            final int lastError = this.kernel32.GetLastError();
-            throw new WriteFailureException("Could not write to named pipe: Unknown error (" + lastError + ")", ErrorCode.UNSPECIFIED);
-        }
-        if (writtenRef.getValue() != payloadSize) {
-            throw new WriteFailureException("Failed to complete write operation: Byte mismatch [Expected: "
-                    + payloadSize + ", Actual: " + writtenRef.getValue() + "]", ErrorCode.BYTE_MISMATCH);
-        }
+        this.pipe.write(payload, payloadSize);
     }
 
     @Override
@@ -96,31 +76,7 @@ public final class IPCConnectionImpl implements IIPCConnection {
         if (!this.connected) {
             throw new IllegalStateException("No connection was established!");
         }
-        final IntByReference availableRef = new IntByReference();
-        if (!this.kernel32.PeekNamedPipe(this.hNamedPipe, null, 0, null, availableRef, null)) {
-            final int lastError = this.kernel32.GetLastError();
-            if (lastError == 0x6D) {
-                throw new ReadFailureException("Could not read available bytes from named pipe: Pipe ended", ErrorCode.PIPE_ENDED);
-            }
-            throw new ReadFailureException("Could not read available bytes from named pipe: Unknown error (" + lastError + ")", ErrorCode.UNSPECIFIED);
-        }
-        if (availableRef.getValue() != 0 && availableRef.getValue() >= size) {
-            final byte[] payloadBuf = new byte[size];
-            final IntByReference readRef = new IntByReference();
-            if (!this.kernel32.ReadFile(this.hNamedPipe, payloadBuf, size, readRef, null)) {
-                final int lastError = this.kernel32.GetLastError();
-                if (lastError != 0) {
-                    throw new ReadFailureException("Could not read bytes from named pipe: Unknown error (" + lastError + ")", ErrorCode.UNSPECIFIED);
-                }
-                if (readRef.getValue() != payloadBuf.length) {
-                    throw new ReadFailureException("Failed to complete read operation: Byte mismatch [Expected: "
-                            + payloadBuf.length + ", Actual: " + readRef.getValue() + "]", ErrorCode.BYTE_MISMATCH);
-                }
-            } else {
-                return payloadBuf;
-            }
-        }
-        return new byte[0];
+        return this.pipe.receive(size);
     }
 
     @Override
@@ -150,6 +106,7 @@ public final class IPCConnectionImpl implements IIPCConnection {
         return this.initialized;
     }
 
+    //TODO validate on different operating systems
     @Override
     public void initialize() throws InitializationFailedException, AlreadyInitializedException {
         if (this.initialized) {
@@ -162,7 +119,7 @@ public final class IPCConnectionImpl implements IIPCConnection {
         boolean found = false;
         for (final String name : this.validPipes) {
             try {
-                new RandomAccessFile(IPCConnectionImpl.WIN_PIPE_PREFIX + name, "rw");
+                new RandomAccessFile(this.osDependent.getPipePrefix() + name, "rw");
                 selected = name;
                 found = true;
             } catch (FileNotFoundException ignored) {

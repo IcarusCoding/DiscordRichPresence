@@ -4,7 +4,7 @@ import java.util.Optional;
 
 import de.intelligence.drp.api.user.IDiscordUser;
 
-public interface IDiscord extends Observer, Subscribable {
+public interface IDiscord extends Observer, Subscriptable {
 
     void registerEventHandler(Object obj);
 

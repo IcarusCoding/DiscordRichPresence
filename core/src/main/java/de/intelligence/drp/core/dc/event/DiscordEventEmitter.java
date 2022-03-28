@@ -11,7 +11,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
-import de.intelligence.drp.api.Subscribable;
+import de.intelligence.drp.api.Subscriptable;
 import de.intelligence.drp.api.annotation.AutoSubscribe;
 import de.intelligence.drp.api.annotation.DiscordEventHandler;
 import de.intelligence.drp.api.annotation.EventMetadata;
@@ -25,10 +25,10 @@ public final class DiscordEventEmitter implements IEventEmitter<DiscordEvent> {
 
     private final ConcurrentHashMap<Class<?>, CopyOnWriteArrayList<EventListener>> handlerMethods;
     private final ThreadLocal<Queue<Pair<Object, List<EventListener>>>> threadLocalQueue;
-    private final Subscribable subscribable;
+    private final Subscriptable subscriptable;
 
-    public DiscordEventEmitter(Subscribable subscribable) {
-        this.subscribable = Objects.requireNonNull(subscribable);
+    public DiscordEventEmitter(Subscriptable subscriptable) {
+        this.subscriptable = Objects.requireNonNull(subscriptable);
         this.handlerMethods = new ConcurrentHashMap<>();
         this.threadLocalQueue = ThreadLocal.withInitial(ArrayDeque::new);
     }
@@ -64,7 +64,7 @@ public final class DiscordEventEmitter implements IEventEmitter<DiscordEvent> {
             if (autoSubscribe && eventParamType.isAnnotationPresent(EventMetadata.class)) {
                 final EventMetadata metadata = eventParamType.getAnnotation(EventMetadata.class);
                 if (metadata.needsSubscription()) {
-                    this.subscribable.subscribe(metadata.eventType());
+                    this.subscriptable.subscribe(metadata.eventType());
                 }
             }
         }
@@ -89,7 +89,7 @@ public final class DiscordEventEmitter implements IEventEmitter<DiscordEvent> {
             if (autoSubscribe && eventParamType.isAnnotationPresent(EventMetadata.class)) {
                 final EventMetadata metadata = eventParamType.getAnnotation(EventMetadata.class);
                 if (metadata.needsSubscription()) {
-                    this.subscribable.unsubscribe(metadata.eventType());
+                    this.subscriptable.unsubscribe(metadata.eventType());
                 }
             }
         }

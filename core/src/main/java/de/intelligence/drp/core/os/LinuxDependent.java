@@ -1,14 +1,22 @@
 package de.intelligence.drp.core.os;
 
+import com.sun.jna.Library;
+import com.sun.jna.Native;
 import de.intelligence.drp.core.exception.ConnectionFailureException;
 import de.intelligence.drp.core.exception.ReadFailureException;
 import de.intelligence.drp.core.exception.WriteFailureException;
 
 public final class LinuxDependent implements OSDependent {
 
+    private final C c;
+
+    public LinuxDependent() {
+        this.c = Native.load("c", C.class);
+    }
+
     @Override
     public int getCurrentPID() {
-        throw new UnsupportedOperationException();
+        return this.c.getpid();
     }
 
     @Override
@@ -47,6 +55,12 @@ public final class LinuxDependent implements OSDependent {
         public void checkError() throws ConnectionFailureException {
             throw new UnsupportedOperationException();
         }
+
+    }
+
+    public interface C extends Library {
+
+        int getpid();
 
     }
 

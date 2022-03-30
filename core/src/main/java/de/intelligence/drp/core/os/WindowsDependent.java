@@ -6,10 +6,11 @@ import com.sun.jna.platform.win32.WinNT;
 import com.sun.jna.ptr.IntByReference;
 import com.sun.jna.win32.StdCallLibrary;
 import de.intelligence.drp.api.exception.ErrorCode;
-import de.intelligence.drp.core.connection.IPCConnectionImpl;
-import de.intelligence.drp.core.exception.ConnectionFailureException;
+import de.intelligence.drp.core.exception.InitializationFailedException;
 import de.intelligence.drp.core.exception.ReadFailureException;
 import de.intelligence.drp.core.exception.WriteFailureException;
+
+import java.util.List;
 
 public final class WindowsDependent implements OSDependent {
 
@@ -31,9 +32,8 @@ public final class WindowsDependent implements OSDependent {
     }
 
     @Override
-    public Pipe createPipe(String file) {
-        return new WinPipe(this.kernel32.CreateFileA(file, WinNT.GENERIC_READ | WinNT.GENERIC_WRITE,
-                0, null, WinNT.OPEN_EXISTING, 0, null), file);
+    public PipeGenerator createPipeGenerator(String prefix, List<String> files) {
+        return new IndependentPipeGenerator(prefix, files, WinPipe::new);
     }
 
     @Override
@@ -43,17 +43,30 @@ public final class WindowsDependent implements OSDependent {
 
     public class WinPipe implements Pipe {
 
-        private final WinNT.HANDLE hPipe;
         private final String pipe;
 
-        public WinPipe(WinNT.HANDLE hPipe, String pipe) {
-            this.hPipe = hPipe;
+        private WinNT.HANDLE hPipe;
+
+        public WinPipe(String pipe) {
             this.pipe = pipe;
         }
 
         @Override
-        public boolean isInvalid() {
-            return this.hPipe == WinNT.INVALID_HANDLE_VALUE;
+        public void init() throws InitializationFailedException {
+            this.hPipe = WindowsDependent.this.kernel32.CreateFileA(this.pipe, WinNT.GENERIC_READ | WinNT.GENERIC_WRITE,
+                    0, null, WinNT.OPEN_EXISTING, 0, null);
+            if (this.hPipe == WinNT.INVALID_HANDLE_VALUE) {
+                throw new InitializationFailedException("Invalid handle received while creating pipe \"" + this.pipe + "\".", ErrorCode.INVALID_HANDLE);
+            }
+            final int lastError = WindowsDependent.this.kernel32.GetLastError();
+            if(lastError != 0) {
+                switch (lastError) {
+                    case 0x02 -> throw new InitializationFailedException("Could not find named pipe " + this.pipe, ErrorCode.PIPE_NOT_FOUND);
+                    case 0x05 -> throw new InitializationFailedException("Could not open named pipe " + this.pipe + ": Access denied", ErrorCode.ACCESS_DENIED);
+                    case 0xE7 -> throw new InitializationFailedException("Could not open named pipe " + this.pipe + ": Pipe is busy", ErrorCode.PIPE_BUSY);
+                    default -> throw new InitializationFailedException("Could not open named pipe " + this.pipe + ": Native error code " + lastError, ErrorCode.UNSPECIFIED);
+                }
+            }
         }
 
         @Override
@@ -61,7 +74,7 @@ public final class WindowsDependent implements OSDependent {
             final IntByReference writtenRef = new IntByReference();
             if (!WindowsDependent.this.kernel32.WriteFile(this.hPipe, payload, payloadSize, writtenRef, null)) {
                 final int lastError = WindowsDependent.this.kernel32.GetLastError();
-                throw new WriteFailureException("Could not write to named pipe: Unknown error (" + lastError + ")", ErrorCode.UNSPECIFIED);
+                throw new WriteFailureException("Could not write to named pipe: Native error code: " + lastError, ErrorCode.UNSPECIFIED);
             }
             if (writtenRef.getValue() != payloadSize) {
                 throw new WriteFailureException("Failed to complete write operation: Byte mismatch [Expected: "
@@ -77,7 +90,7 @@ public final class WindowsDependent implements OSDependent {
                 if (lastError == 0x6D) {
                     throw new ReadFailureException("Could not read available bytes from named pipe: Pipe ended", ErrorCode.PIPE_ENDED);
                 }
-                throw new ReadFailureException("Could not read available bytes from named pipe: Unknown error (" + lastError + ")", ErrorCode.UNSPECIFIED);
+                throw new ReadFailureException("Could not read available bytes from named pipe: Native error code " + lastError, ErrorCode.UNSPECIFIED);
             }
             if (availableRef.getValue() != 0 && availableRef.getValue() >= size) {
                 final byte[] payloadBuf = new byte[size];
@@ -85,7 +98,7 @@ public final class WindowsDependent implements OSDependent {
                 if (!WindowsDependent.this.kernel32.ReadFile(this.hPipe, payloadBuf, size, readRef, null)) {
                     final int lastError = WindowsDependent.this.kernel32.GetLastError();
                     if (lastError != 0) {
-                        throw new ReadFailureException("Could not read bytes from named pipe: Unknown error (" + lastError + ")", ErrorCode.UNSPECIFIED);
+                        throw new ReadFailureException("Could not read bytes from named pipe: Native error code " + lastError, ErrorCode.UNSPECIFIED);
                     }
                     if (readRef.getValue() != payloadBuf.length) {
                         throw new ReadFailureException("Failed to complete read operation: Byte mismatch [Expected: "
@@ -104,16 +117,8 @@ public final class WindowsDependent implements OSDependent {
         }
 
         @Override
-        public void checkError() throws ConnectionFailureException {
-            final int lastError = WindowsDependent.this.kernel32.GetLastError();
-            if(lastError != 0) {
-                switch (lastError) {
-                    case 0x02 -> throw new ConnectionFailureException("Could not find named pipe " + this.pipe, ErrorCode.PIPE_NOT_FOUND);
-                    case 0x05 -> throw new ConnectionFailureException("Could not open named pipe " + this.pipe + ": Access denied", ErrorCode.ACCESS_DENIED);
-                    case 0xE7 -> throw new ConnectionFailureException("Could not open named pipe " + this.pipe + ": Pipe is busy", ErrorCode.PIPE_BUSY);
-                    default -> throw new ConnectionFailureException("Could not open named pipe " + this.pipe + ": Unknown error (" + lastError + ")", ErrorCode.UNSPECIFIED);
-                }
-            }
+        public String getPipeName() {
+            return this.pipe;
         }
 
     }

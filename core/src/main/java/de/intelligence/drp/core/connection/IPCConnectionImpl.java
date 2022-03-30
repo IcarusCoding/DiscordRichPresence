@@ -9,13 +9,8 @@ import java.util.List;
 import com.sun.jna.platform.win32.WinNT;
 import com.sun.jna.ptr.IntByReference;
 
-import de.intelligence.drp.core.exception.AlreadyInitializedException;
-import de.intelligence.drp.core.exception.ConnectionException;
-import de.intelligence.drp.core.exception.ConnectionFailureException;
+import de.intelligence.drp.core.exception.*;
 import de.intelligence.drp.api.exception.ErrorCode;
-import de.intelligence.drp.core.exception.InitializationFailedException;
-import de.intelligence.drp.core.exception.ReadFailureException;
-import de.intelligence.drp.core.exception.WriteFailureException;
 import de.intelligence.drp.core.os.OSDependent;
 import de.intelligence.drp.core.os.OSUtils;
 
@@ -26,7 +21,6 @@ public final class IPCConnectionImpl implements IIPCConnection {
 
     private boolean initialized;
     private boolean connected;
-    private String selectedPipe;
     private OSDependent.Pipe pipe;
 
     public IPCConnectionImpl() {
@@ -46,10 +40,8 @@ public final class IPCConnectionImpl implements IIPCConnection {
         if (this.connected) {
             return;
         }
-        this.pipe = this.osDependent.createPipe(this.osDependent.getPipePrefix() + this.selectedPipe);
-        if (!this.pipe.isInvalid()) {
-            this.pipe.checkError();
-        }
+        this.pipe = this.osDependent.createPipeGenerator(this.osDependent.getPipePrefix(), this.validPipes).generate();
+        this.pipe.init();
         this.connected = true;
     }
 
@@ -106,29 +98,14 @@ public final class IPCConnectionImpl implements IIPCConnection {
         return this.initialized;
     }
 
-    //TODO validate on different operating systems
     @Override
     public void initialize() throws InitializationFailedException, AlreadyInitializedException {
         if (this.initialized) {
             throw new AlreadyInitializedException("Connection must only be initialized once!", ErrorCode.ALREADY_INITIALIZED);
         }
         if (this.validPipes.isEmpty()) {
-            throw new IllegalStateException("At least one named pipe has to be defined before initialization!");
+            throw new InitializationFailedException("At least one named pipe has to be defined before initialization!", ErrorCode.UNSPECIFIED);
         }
-        String selected = null;
-        boolean found = false;
-        for (final String name : this.validPipes) {
-            try {
-                new RandomAccessFile(this.osDependent.getPipePrefix() + name, "rw");
-                selected = name;
-                found = true;
-            } catch (FileNotFoundException ignored) {
-            }
-        }
-        if (!found) {
-            throw new InitializationFailedException("Could not reserve a named pipe!", ErrorCode.PIPE_RESERVATION_FAILED);
-        }
-        this.selectedPipe = selected;
         this.initialized = true;
     }
 

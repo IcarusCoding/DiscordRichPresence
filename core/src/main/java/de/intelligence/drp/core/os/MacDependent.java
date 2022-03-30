@@ -1,8 +1,10 @@
 package de.intelligence.drp.core.os;
 
-import de.intelligence.drp.core.exception.ConnectionFailureException;
+import de.intelligence.drp.core.exception.InitializationFailedException;
 import de.intelligence.drp.core.exception.ReadFailureException;
 import de.intelligence.drp.core.exception.WriteFailureException;
+
+import java.util.List;
 
 public final class MacDependent implements OSDependent {
 
@@ -12,8 +14,8 @@ public final class MacDependent implements OSDependent {
     }
 
     @Override
-    public Pipe createPipe(String file) {
-        return new MacPipe();
+    public PipeGenerator createPipeGenerator(String prefix, List<String> files) {
+        return new IndependentPipeGenerator(prefix, files, MacPipe::new);
     }
 
     @Override
@@ -23,8 +25,14 @@ public final class MacDependent implements OSDependent {
 
     public class MacPipe implements Pipe {
 
+        private final String pipe;
+
+        public MacPipe(String pipe) {
+            this.pipe = pipe;
+        }
+
         @Override
-        public boolean isInvalid() {
+        public void init() throws InitializationFailedException {
             throw new UnsupportedOperationException();
         }
 
@@ -44,7 +52,7 @@ public final class MacDependent implements OSDependent {
         }
 
         @Override
-        public void checkError() throws ConnectionFailureException {
+        public String getPipeName() {
             throw new UnsupportedOperationException();
         }
 

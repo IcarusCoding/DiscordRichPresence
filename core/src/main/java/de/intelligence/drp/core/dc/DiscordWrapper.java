@@ -84,7 +84,7 @@ public final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message>
         this.gson = new GsonBuilder().registerTypeAdapter(Message.class, new MessageDeserializer()).create();
         this.lastException = new AtomicReference<>();
         final IIPCConnection ipcConn = new IPCConnectionImpl();
-        ipcConn.setNamedPipes(Arrays.asList("\\\\.\\pipe\\discord-ipc-0", "\\\\.\\pipe\\discord-ipc-1", "\\\\.\\pipe\\discord-ipc-2"));
+        ipcConn.setNamedPipes(Arrays.asList("discord-ipc-0", "discord-ipc-1", "discord-ipc-2"));
         this.rpcConnection = new DiscordRPCConnection(new ConnectionInfo(1, this.applicationId), this.gson, ipcConn);
         this.retryFunc = Retry.decorateSupplier(Retry.of("initConn", RetryConfig.<Boolean>custom()
                 .maxAttempts(DiscordConsts.MAX_RETRY_ATTEMPTS)

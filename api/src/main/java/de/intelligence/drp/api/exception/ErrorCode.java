@@ -11,7 +11,10 @@ public enum ErrorCode {
     PIPE_BUSY(0x04),
     ACCESS_DENIED(0x05),
     BYTE_MISMATCH(0x06),
-    PIPE_ENDED(0x07);
+    PIPE_ENDED(0x07),
+    INVALID_HANDLE(0x08),
+    GENERATOR_FAILED(0x09),
+    SOCKET_INIT_FAILED(0x0A);
 
     private final int code;
 

@@ -69,8 +69,8 @@ public final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message>
     private final Condition condition;
     private final Queue<Frame> queueOut;
     private final EnumSet<InternalEventType> subscriptions;
-    private final ScheduledExecutorService schedulerOut;
 
+    private ScheduledExecutorService schedulerOut;
     private RichPresence currentPresence;
     private boolean initialized;
     private boolean abort;
@@ -103,11 +103,7 @@ public final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message>
         this.condition = this.reentrantLock.newCondition();
         this.queueOut = new LinkedBlockingQueue<>();
         this.subscriptions = EnumSet.noneOf(InternalEventType.class);
-        this.schedulerOut = Executors.newScheduledThreadPool(1, r -> {
-            final Thread t = Executors.defaultThreadFactory().newThread(r);
-            t.setDaemon(true);
-            return t;
-        });
+        this.newScheduler();
     }
 
     @Override
@@ -228,9 +224,23 @@ public final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message>
         } catch (ReadFailureException | InvalidMessageException ex) {
             this.lastException.set(ex);
             this.terminateIfError();
+            return;
         }
+        this.reset();
+    }
+
+    private void newScheduler() {
+        this.schedulerOut = Executors.newScheduledThreadPool(1, r -> {
+            final Thread t = Executors.defaultThreadFactory().newThread(r);
+            t.setDaemon(true);
+            return t;
+        });
+    }
+
+    private void reset() {
         this.schedulerOut.shutdownNow();
         this.rpcConnection.disconnect();
+        this.newScheduler();
     }
 
     private boolean await() {
@@ -279,6 +289,7 @@ public final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message>
         if (lastEx != null) {
             this.eventEmitter.emit(new ErrorEvent(lastEx, lastEx instanceof ConnectionException ex ? ex.getErrorCode() : ErrorCode.UNSPECIFIED));
             this.disconnect();
+            this.reset();
         }
     }
 
@@ -313,7 +324,7 @@ public final class DiscordWrapper implements IDiscord, IRPCEventHandler<Message>
         this.connectedDiscordUser = null;
         this.lastException.set(null);
         this.initialized = false;
-        this.eventEmitter.emit(new CloseEvent());
+        this.eventEmitter.emit(new CloseEvent(this));
     }
 
     @Override

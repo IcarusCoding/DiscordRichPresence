@@ -45,7 +45,6 @@ public interface OSDependent {
             this.pipeCreatorFunc = pipeCreatorFunc;
         }
 
-
         @Override
         public Pipe generate() throws GeneratorException {
             final List<Throwable> exceptions = new ArrayList<>();

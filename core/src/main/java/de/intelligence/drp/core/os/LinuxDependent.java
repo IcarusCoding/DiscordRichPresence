@@ -21,7 +21,7 @@ public final class LinuxDependent implements OSDependent {
     static {
         LINUX_PIPE_PREFIX = Optional.ofNullable(System.getenv("XDG_RUNTIME_DIR"))
                 .or(() -> Optional.ofNullable(System.getenv("TMP")))
-                .orElseThrow(() -> new IllegalStateException("Discord pipe directory was not found.")) + "/";
+                .orElse("/tmp") + "/";
     }
 
     private final C c;

@@ -53,9 +53,9 @@ public final class DiscordRPCConnection extends AbstractRPCConnection<Message> {
     public void disconnect() {
         if (this.ipcConnection.isConnected()) {
             this.ipcConnection.disconnect();
-            this.eventHandlers.forEach(IRPCEventHandler::onDisconnect);
         }
         this.state = RPCConnectionState.DISCONNECT;
+        this.eventHandlers.forEach(IRPCEventHandler::onDisconnect);
     }
 
     @Override

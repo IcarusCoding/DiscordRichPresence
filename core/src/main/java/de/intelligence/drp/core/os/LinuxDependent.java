@@ -14,7 +14,7 @@ import de.intelligence.drp.core.exception.WriteFailureException;
 import java.util.List;
 import java.util.Optional;
 
-public final class LinuxDependent implements OSDependent {
+public class LinuxDependent implements OSDependent {
 
     private static final String LINUX_PIPE_PREFIX;
 
@@ -24,7 +24,7 @@ public final class LinuxDependent implements OSDependent {
                 .orElse("/tmp") + "/";
     }
 
-    private final C c;
+    protected final C c;
 
     public LinuxDependent() {
         this.c = Native.load("c", C.class);
@@ -47,9 +47,9 @@ public final class LinuxDependent implements OSDependent {
 
     public class LinuxPipe implements Pipe {
 
-        private final String pipe;
+        protected final String pipe;
 
-        private int fileDescriptor;
+        protected int fileDescriptor;
 
         public LinuxPipe(String pipe) {
             this.pipe = pipe;

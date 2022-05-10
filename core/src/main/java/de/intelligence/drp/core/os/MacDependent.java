@@ -3,8 +3,6 @@ package de.intelligence.drp.core.os;
 import com.sun.jna.Native;
 import de.intelligence.drp.api.exception.ErrorCode;
 import de.intelligence.drp.core.exception.InitializationFailedException;
-import de.intelligence.drp.core.exception.ReadFailureException;
-import de.intelligence.drp.core.exception.WriteFailureException;
 
 import java.util.List;
 import java.util.Optional;
@@ -16,11 +14,6 @@ public final class MacDependent extends LinuxDependent {
     static {
         MAC_PIPE_PREFIX = Optional.ofNullable(System.getenv("TMPDIR"))
                 .orElse("/tmp") + "/";
-    }
-
-    @Override
-    public int getCurrentPID() {
-        throw new UnsupportedOperationException();
     }
 
     @Override
